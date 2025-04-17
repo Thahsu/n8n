@@ -1,0 +1,442 @@
+{
+  "name": "mail",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {},
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "913c31e9-eaee-4d8d-9b7a-44df4874e421",
+      "name": "Gmail Trigger",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "15UVYGMaC5ebHPof",
+          "name": "Gmail account 1963cfb180c"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": true,
+        "simple": false,
+        "filters": {
+          "q": "subject:\"nộp bài\" OR subject:\"nop bai\"label:\"Chưa xử lý\""
+        },
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        220,
+        0
+      ],
+      "id": "dd903662-e539-4c4a-9e33-d84fecca585b",
+      "name": "Gmail",
+      "webhookId": "ec4ef15e-797d-457f-9b8b-5750822705d8",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "15UVYGMaC5ebHPof",
+          "name": "Gmail account 1963cfb180c"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.flatMap(item => {\n  const email = item.json.from?.value?.[0]?.address || 'Không có email';\n  const messageId = item.json.id || 'Không có messageId'; // Lấy messageId\n  const binaries = item.binary || {};\n\n  return Object.keys(binaries).map(key => {\n    const fileName = binaries[key]?.fileName || 'Không có tên file';\n\n    return {\n      json: {\n        \"Tên tập tin\": fileName,\n        \"Email người gửi\": email,\n        \"messageId\": messageId\n      }\n    };\n  });\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ],
+      "id": "f603ab6f-5d7c-43da-a42d-a143c389afb1",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        660,
+        0
+      ],
+      "id": "8a2092b7-51a8-4f4b-acda-3308b5d555e5",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=So sánh các tên trong mảng \"ds_taptin\" với mảng \"ds_dapan\" (lấy từ Google Sheet).\n\nTrả về object JSON **nguyên bản**, KHÔNG stringify, KHÔNG markdown, KHÔNG bọc ```.\n\nTrả về đúng cấu trúc sau (chỉ là object, không là chuỗi):\n\n{\n  \"to\": \"{{ $json.nguoi_gui }}\",\n  \"subject\": \"Phản hồi bài làm - {{ $json.ds_taptin.join(', ') }}\",\n  \"messageId\": \"{{ $json.messageId }}\",\n  \"ds_dapan_matched\": [ { \"ten\": \"...\", \"link\": \"...\" } ]\n}\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.8,
+      "position": [
+        280,
+        200
+      ],
+      "id": "21f7be57-2dcf-48ce-beb7-2967f90b218c",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        180,
+        420
+      ],
+      "id": "e3d9ac57-03ab-45c6-9fa8-b1dcfedc5bac",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "tLdIJelS8kma8JWf",
+          "name": "OpenAi account 1961ea30e2e"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "=$input.first().json.data[1].messageId"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        360,
+        420
+      ],
+      "id": "c5b1ed8d-a136-4d7a-bfbb-2c4ab2699f1a",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "jsCode": "const grouped = {};\n\nif (!items[0]?.json?.data) {\n  return [{ json: { error: \"Không có dữ liệu file để xử lý.\" } }];\n}\n\nitems[0].json.data.forEach(file => {\n  const messageId = file[\"messageId\"];\n  const fileName = file[\"Tên tập tin\"] ?? \"Không có tên file\";\n  const sender = file[\"Email người gửi\"];\n\n  if (!grouped[messageId]) {\n    grouped[messageId] = {\n      messageId,\n      nguoi_gui: sender,\n      ds_taptin: []\n    };\n  }\n\n  grouped[messageId].ds_taptin.push(fileName);\n});\n\nreturn Object.values(grouped).map(group => ({\n  json: group\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ],
+      "id": "272549f7-675d-46c3-978f-385a131369ba",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1OtJ8SB5q9-gsD-LlEqeDZP2xKU2eD9PJtQv54bkXKek",
+          "mode": "list",
+          "cachedResultName": "Dap_An",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1OtJ8SB5q9-gsD-LlEqeDZP2xKU2eD9PJtQv54bkXKek/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Trang tính1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1OtJ8SB5q9-gsD-LlEqeDZP2xKU2eD9PJtQv54bkXKek/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.5,
+      "position": [
+        560,
+        420
+      ],
+      "id": "4a17df0b-1710-4bf9-a20e-ae20a5826c96",
+      "name": "Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "pRGndjazb5YubjZq",
+          "name": "Google Sheets account 1962ace2c71"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.to }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        980,
+        200
+      ],
+      "id": "251ba498-62f4-4950-92ad-9b2e584d6d95",
+      "name": "Gmail3",
+      "webhookId": "92f65ff4-7449-4549-9e14-f5fef421c1c7",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "15UVYGMaC5ebHPof",
+          "name": "Gmail account 1963cfb180c"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  let raw = item.json.output;\n  let safetyCounter = 0;\n\n  try {\n    // Nếu đã là object thì return luôn\n    if (typeof raw === 'object') return { json: raw };\n\n    // Cố gắng parse tối đa 3 lần nếu là chuỗi\n    while (typeof raw === 'string' && safetyCounter < 3) {\n      raw = JSON.parse(raw);\n      safetyCounter++;\n    }\n\n    // Kiểm tra kết quả cuối có phải object chưa\n    if (typeof raw !== 'object') {\n      throw new Error(\"Không thể chuyển đổi output thành object\");\n    }\n\n    return { json: raw };\n\n  } catch (err) {\n    return {\n      json: {\n        error: \"Lỗi khi parse JSON\",\n        detail: err.message,\n        raw: item.json.output\n      }\n    };\n  }\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        620,
+        200
+      ],
+      "id": "4624847b-183d-4561-8b38-359f90c90356",
+      "name": "Code2"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Code1').item.json.messageId }}",
+        "labelIds": [
+          "Label_3750533290003278410"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1440,
+        220
+      ],
+      "id": "5905ef24-e20c-45c9-88f6-44889c24c637",
+      "name": "Gmail2",
+      "webhookId": "606607f0-e8d2-4682-aa0c-dc0ff2b6d95f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "15UVYGMaC5ebHPof",
+          "name": "Gmail account 1963cfb180c"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "removeLabels",
+        "messageId": "={{ $('Code1').item.json.messageId }}",
+        "labelIds": [
+          "Label_8723920801846347704"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1180,
+        200
+      ],
+      "id": "bb21f4cb-5534-4d67-b130-3fa272866542",
+      "name": "Gmail1",
+      "webhookId": "741d446b-4e5e-4b7f-b1e1-1e3805ae1196",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "15UVYGMaC5ebHPof",
+          "name": "Gmail account 1963cfb180c"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  const to = item.json.to;\n  const subject = item.json.subject;\n  const ds_dapan = item.json.ds_dapan_matched || [];\n\n  // Tạo nội dung HTML\n  let html = `\n    <p>Xin chào bạn,</p>\n    <p>Chúng tôi đã nhận được bài nộp của bạn. Sau khi giảng viên kiểm tra, dưới đây là các đáp án phù hợp:</p>\n  `;\n\n  if (ds_dapan.length > 0) {\n    html += `<ul style=\"padding-left: 20px;\">`;\n    for (const d of ds_dapan) {\n      html += `\n        <li>\n          <strong>${d.ten}</strong>: \n          <a href=\"${d.link}\" target=\"_blank\" style=\"color: #1a73e8; text-decoration: none;\">\n            Xem đáp án\n          </a>\n        </li>`;\n    }\n    html += `</ul>`;\n  } else {\n    html += `<p style=\"color: #d93025;\">Hiện chưa có tập tin nào trùng khớp với đáp án trong hệ thống.</p>`;\n  }\n\n  html += `\n    <p style=\"margin-top: 20px;\">Chúc bạn học tập tốt!<br><strong>AI Trợ Lý Tự Động – Trung tâm Học vụ</strong></p>\n  `;\n\n  return {\n    json: {\n      to,\n      subject,\n      html\n    }\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        800,
+        200
+      ],
+      "id": "30bb520d-8b57-476c-8867-1be8818cfa97",
+      "name": "Code3"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code2": {
+      "main": [
+        [
+          {
+            "node": "Code3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail3": {
+      "main": [
+        [
+          {
+            "node": "Gmail1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail1": {
+      "main": [
+        [
+          {
+            "node": "Gmail2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code3": {
+      "main": [
+        [
+          {
+            "node": "Gmail3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "342f5e73-fed5-421b-aad7-a4392a8b9fd9",
+  "meta": {
+    "instanceId": "29529c6d9a87020e2baeeb323cbc7d75a3f7569dc9ef9d8e01ad746601b233dd"
+  },
+  "id": "jMPPXeeHTA3HdIa3",
+  "tags": []
+}
